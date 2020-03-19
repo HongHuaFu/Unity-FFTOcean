@@ -1,0 +1,25 @@
+﻿#pragma kernel CSMain
+
+int N;
+float4 scale;
+
+RWTexture2D<float4> FFTHeight;
+RWTexture2D<float4> FFTDx;
+RWTexture2D<float4> FFTDy;
+RWTexture2D<float4> Result;
+
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float y = length(FFTHeight[id.xy].xy) / (N * N) * scale.y;
+
+	float x = length(FFTDx[id.xy].xy) / (N * N) * scale.x;
+	float z = length(FFTDy[id.xy].xy) / (N * N) * scale.z;
+
+	FFTHeight[id.xy] = float4(y, y, y, 1);
+	FFTDx[id.xy] = float4(x, x, x, 1);
+	FFTDy[id.xy] = float4(z, z, z, 1);
+
+	Result[id.xy] = float4(x, y, z, 1);
+}

@@ -1,0 +1,78 @@
+﻿#pragma kernel CSMain
+#define PI 3.14159274f
+#define G 9.81f
+
+
+RWTexture2D<float4> Result;
+int N; //fft ocean Size
+float4 Wind;// just x,y channel store value
+float Amp;// wave amp
+
+float phillips(float2 k,float signal);
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float2 k = float2(2.0f * PI * id.x / N - PI, 
+					  2.0f * PI * id.y / N - PI);
+
+	float ret = phillips(k,1.f);
+	float ret_conj = phillips(k,-1.f);
+
+    Result[id.xy] = float4(ret, 0.0, 0.0, 0.0);
+}
+
+float dispersion(float2 k)
+{
+	return sqrt(G * length(k));
+}
+
+float DBDS(float2 k)
+{
+	float betaS;
+	float omegap = 0.855f * G / length(Wind.xy);
+	float ratio = dispersion(k) / omegap;
+
+	if (ratio < 0.95f)
+	{
+		betaS = 2.61f * pow(ratio, 1.3f);
+	}
+	if(ratio >= 0.95f && ratio < 1.6f)
+	{
+		betaS = 2.28f * pow(ratio, -1.3f);
+	}
+	if(ratio > 1.6f)
+	{
+		float epsilon = -0.4f + 0.8393f * exp(-0.567f * log(ratio * ratio));
+		betaS = pow(10, epsilon);
+	}
+	float theta = atan2(k.y, k.x) - atan2(Wind.y, Wind.x);
+
+	return betaS / max(1e-7f, 2.0f * tanh(betaS * PI) * pow(cosh(betaS * theta), 2));
+}
+
+float phillips(float2 k1,float signal)
+{
+	float2 k = k1 * signal;
+	float kLen = max(0.001f,length(k));
+	float kLen2 = kLen * kLen;
+	float kLen4 = kLen2 * kLen2;
+
+	float windSpeed = length(Wind.xy);
+
+	float l = windSpeed * windSpeed / G;
+	float l2 = l * l;
+
+	// orign l change too big, damping it down make control smoothly
+	float damping = 0.001f;
+	float L2 = l2 * damping * damping;
+
+
+	float kDotWindDir = normalize(Wind.xy) * normalize(k);
+	float kDotWindDir2 = kDotWindDir*kDotWindDir;
+
+	// using Donelan-Banner Directional Spreading work under scene L=N.
+	float aa = DBDS(k);
+	float ret = Amp * aa * exp(-1.0f / (kLen2 * l2)) / kLen4 * exp(-kLen2 * L2);
+	return ret;
+}

@@ -1,0 +1,26 @@
+﻿#pragma kernel CSMain
+#define PI 3.14159274f
+#define G 9.81f
+
+
+int N; //fft ocean Size
+
+RWTexture2D<float4> GaussianNoise;
+RWTexture2D<float4> Phillips;//
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float2 k = float2(2.0f * PI * id.x / N - PI, 
+					  2.0f * PI * id.y / N - PI);
+
+    float2 gaussian = GaussianNoise[id.xy].xy;
+	float2 phillip = Phillips[id.xy].xy;
+	float2 h0k = gaussian * sqrt( abs(phillip.x * 0.5f));
+
+	gaussian.y *= -1.0f;
+	float2 h0k_conj = gaussian * sqrt(abs(phillip.y * 0.5f));
+
+    Result[id.xy] = float4(h0k,h0k_conj);
+}

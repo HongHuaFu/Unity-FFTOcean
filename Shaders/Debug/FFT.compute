@@ -1,0 +1,83 @@
+﻿#pragma kernel FFTH
+#pragma kernel FFTHE
+#pragma kernel FFTV
+#pragma kernel FFTVE
+#define PI 3.14159274f
+
+int ns;	
+int N;
+RWTexture2D<float4> Input;
+RWTexture2D<float4> Result;
+
+
+[numthreads(8,8,1)]
+void FFTH (uint3 id : SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.x = floor(id.x / (ns * 2))*ns + id.x % ns;
+	float a = 2.0f*PI *(id.x/(ns*2.0f));
+	float2 w = float2(cos(a),sin(a));
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x + N * 0.5f, coord.y)].xy;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	Result[id.xy] = float4(output,0,0);
+}
+
+[numthreads(8,8,1)]
+void FFTHE (uint3 id : SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.x = floor(id.x / (ns * 2))*ns + id.x % ns;
+	float a = 2.0f*PI *(id.x/(ns*2.0f));
+	float2 w = -1.0f * float2(cos(a),sin(a));
+	
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x + N * 0.5f, coord.y)].xy;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+
+	int x = id.x - N * 0.5f;
+	output *= ((x + 1) % 2.0f) * 1 + (x % 2.0f) * (-1);
+
+	Result[id.xy] = float4(output,0,0);
+}
+
+[numthreads(8, 8, 1)]
+void FFTV(uint3 id: SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.y = floor(id.y / (ns * 2)) * ns + id.y % ns;
+
+	float a = 2.0f * PI * (id.y / (ns * 2.0f));
+	float2 w = float2(cos(a), sin(a));
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x, coord.y + N * 0.5f)].xy;
+
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	Result[id.xy] = float4(output,0,0);
+}
+
+[numthreads(8, 8, 1)]
+void FFTVE(uint3 id: SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.y = floor(id.y / (ns * 2)) * ns + id.y % ns;
+
+	float a = 2.0f * PI * (id.y / (ns * 2.0f));
+	float2 w = -1 * float2(cos(a), sin(a));
+	
+	
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x, coord.y + N * 0.5f)].xy;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	int x = id.y - N * 0.5f;
+	output *= ((x + 1) % 2.0f) * 1 + (x % 2.0f) * (-1);
+
+	Result[id.xy] = float4(output,0,0);
+}

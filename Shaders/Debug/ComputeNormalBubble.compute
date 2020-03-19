@@ -1,0 +1,52 @@
+﻿#pragma kernel CSMain
+
+
+int N;	
+float OceanLen;
+float BubblesThreshold;
+float BubblesScale;
+
+RWTexture2D<float4> Displace;
+RWTexture2D<float4> NormalBubbles;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	// 1. compute normal
+	float uintLen = OceanLen / (N - 1.0f);
+												
+	uint2 pLeft = uint2((id.x - 1.0f + N) % N, id.y);
+	uint2 pRight = uint2((id.x + 1.0f + N) % N, id.y);
+	uint2 pDown = uint2(id.x, (id.y - 1.0f + N) % N);
+	uint2 pUp = uint2(id.x, (id.y + 1.0f + N) % N);
+
+	
+	float3 x1D = Displace[pLeft].xyz;
+	float3 x2D = Displace[pRight].xyz;
+	float3 z1D = Displace[pDown].xyz;
+	float3 z2D = Displace[pUp].xyz;
+
+	float3 x1 = float3(x1D.x - uintLen, x1D.yz);
+	float3 x2 = float3(x2D.x + uintLen, x2D.yz);
+	float3 z1 = float3(z1D.xy, z1D.z - uintLen);
+	float3 z2 = float3(z1D.xy, z1D.z + uintLen);
+
+												 
+	float3 tangentX = x2 - x1;
+	float3 tangentZ = z2 - z1;
+
+
+	float3 normal = normalize(cross(tangentZ, tangentX));
+
+
+	//2. compute bubble
+	float3 ddx = x2D - x1D;
+	float3 ddz = z2D - z1D;
+
+
+	float jacobian = (1.0f + ddx.x) * (1.0f + ddz.z) - ddx.z * ddz.x;
+
+	jacobian = saturate(max(0, BubblesThreshold - saturate(jacobian)) * BubblesScale);
+
+	NormalBubbles[id.xy] = float4(normal, jacobian);
+}

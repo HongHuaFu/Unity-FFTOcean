@@ -1,0 +1,154 @@
+﻿#pragma kernel SpectrumInit
+#pragma kernel SpectrumUpdate
+#pragma kernel FFTH
+#pragma kernel FFTHE
+#pragma kernel FFTV
+#pragma kernel FFTVE
+#include "Common.hlsl"
+
+
+int N;
+float Amp;
+float4 Wind;
+float Len;
+float Time;
+
+RWTexture2D<float4> SpectrumInitOut;
+RWTexture2D<float4> HeightSpectrumUpdateOut;
+RWTexture2D<float4> DxDzSpectrumUpdateOut;
+
+
+[numthreads(8,8,1)]
+void SpectrumInit (uint3 id : SV_DispatchThreadID)
+{
+	float phi1 = Phillips(id.x,id.y,Amp,Wind.xy,N,Len);
+	float phi2 = Phillips(N-id.x,N-id.y,Amp,Wind.xy,N,Len);
+
+	float Nn = N;
+	float2 uv = id.xy;
+	uv /= Nn;
+
+	float2 rand = float2(1.5122f, 6.1152f);
+	 
+	float2 h0 = hTilde0(uv, 0.5f * rand.x, 2.0f* rand.y, phi1);
+	float2 h0conj = Conj(hTilde0(uv, rand.x,rand.y, phi2));
+	
+	SpectrumInitOut[id.xy] = float4(h0, h0conj);
+}
+
+[numthreads(8,8,1)]
+void SpectrumUpdate (uint3 id : SV_DispatchThreadID)
+{
+	float2 k = WaveVector(id.x,id.y,Len,N);
+	float kLen = length(k);
+	float omega = sqrt(abs(G * kLen));
+
+	float sinOmega;
+	float cosOmega;
+	sincos(omega * Time, sinOmega, cosOmega);
+
+	float2 d1 = float2(cosOmega, -sinOmega);
+	float2 d2 = float2(cosOmega, sinOmega);
+
+	float4 h0 = SpectrumInitOut[id.xy];
+
+	float2 h = ComplexMul(h0.xy, d1) + ComplexMul(h0.zw, d2);
+
+	HeightSpectrumUpdateOut[id.xy] = float4(h,0,0);
+	DxDzSpectrumUpdateOut[id.xy] = float4( 
+				float2(-h.y * k.x, h.x * k.x) / (kLen + 0.00001f),
+				float2(-h.y * k.y, h.x * k.y) / (kLen + 0.00001f));
+}
+
+int ns;	
+RWTexture2D<float4> Input;
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void FFTH (uint3 id : SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.x = floor(id.x / (ns * 2))*ns + id.x % ns;
+	float a = 2.0f*PI *(id.x/(ns*2.0f));
+	float2 w = float2(cos(a),sin(a));
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x + N * 0.5f, coord.y)].xy;
+
+	float2 y0 = Input[coord].zw;
+	float2 y1 = Input[int2(coord.x + N * 0.5f, coord.y)].zw;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	float2 output1 = y0 + float2(w.x * y1.x - w.y * y1.y, w.x * y1.y + w.y * y1.x);
+
+	Result[id.xy] = float4(output,output1);
+}
+
+[numthreads(8,8,1)]
+void FFTHE (uint3 id : SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.x = floor(id.x / (ns * 2))*ns + id.x % ns;
+	float a = 2.0f*PI *(id.x/(ns*2.0f));
+	float2 w = -1.0f * float2(cos(a),sin(a));
+
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x + N * 0.5f, coord.y)].xy;
+
+	float2 y0 = Input[coord].zw;
+	float2 y1 = Input[int2(coord.x + N * 0.5f, coord.y)].zw;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	float2 output1 = y0 + float2(w.x * y1.x - w.y * y1.y, w.x * y1.y + w.y * y1.x);
+
+
+	int x = id.x - N * 0.5f;
+	output *= ((x + 1) % 2.0f) * 1 + (x % 2.0f) * (-1);
+	output1 *= ((x + 1) % 2.0f) * 1 + (x % 2.0f) * (-1);
+
+	Result[id.xy] = float4(output,output1);
+}
+
+[numthreads(8, 8, 1)]
+void FFTV(uint3 id: SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.y = floor(id.y / (ns * 2)) * ns + id.y % ns;
+
+	float a = 2.0f * PI * (id.y / (ns * 2.0f));
+	float2 w = float2(cos(a), sin(a));
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x, coord.y + N * 0.5f)].xy;
+	float2 y0 = Input[coord].zw;
+	float2 y1 = Input[int2(coord.x + N * 0.5f, coord.y)].zw;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	float2 output1 = y0 + float2(w.x * y1.x - w.y * y1.y, w.x * y1.y + w.y * y1.x);
+	Result[id.xy] = float4(output,output1);
+}
+
+[numthreads(8, 8, 1)]
+void FFTVE(uint3 id: SV_DispatchThreadID)
+{
+	int2 coord = id.xy;
+	coord.y = floor(id.y / (ns * 2)) * ns + id.y % ns;
+
+	float a = 2.0f * PI * (id.y / (ns * 2.0f));
+	float2 w = -1 * float2(cos(a), sin(a));
+
+
+	float2 x0 = Input[coord].xy;
+	float2 x1 = Input[int2(coord.x, coord.y + N * 0.5f)].xy;
+	float2 y0 = Input[coord].zw;
+	float2 y1 = Input[int2(coord.x + N * 0.5f, coord.y)].zw;
+
+	float2 output = x0 + float2(w.x * x1.x - w.y * x1.y, w.x * x1.y + w.y * x1.x);
+	float2 output1 = y0 + float2(w.x * y1.x - w.y * y1.y, w.x * y1.y + w.y * y1.x);
+
+	int x = id.y - N * 0.5f;
+	output *= ((x + 1) % 2.0f) * 1 + (x % 2.0f) * (-1);
+	output1 *= x;
+	Result[id.xy] = float4(output,output1);
+}

@@ -1,0 +1,59 @@
+﻿#pragma kernel CSMain
+#define PI 3.14159274f
+#define G 9.81f
+
+int N;	
+float Time;
+
+RWTexture2D<float4> hResult;
+RWTexture2D<float4> dxResult;
+RWTexture2D<float4> dyResult;
+RWTexture2D<float4> H0k;
+ 
+float2 computeHeightSpectrum(float2 xy,float2 k);
+float4 computeDisplaceSpectrum(float2 xy,float2 k,float2 hTilde);
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	float2 k = float2(2*PI * id.x / N - PI,
+					  2*PI * id.y / N - PI);
+
+	float2 hTilde = computeHeightSpectrum(id.xy,k);
+
+	float4 displaceXY = computeDisplaceSpectrum(id.xy,k,hTilde);
+
+	hResult[id.xy] = float4(hTilde,0,0);
+	dxResult[id.xy] = float4(displaceXY.xy,0,0);
+	dyResult[id.xy] = float4(displaceXY.zw,0,0);
+}
+
+float2 complexMultiply(float2 c1, float2 c2)
+{
+	return float2(c1.x * c2.x - c1.y * c2.y,
+		c1.x * c2.y + c1.y * c2.x);
+}
+
+
+
+float2 computeHeightSpectrum(float2 xy,float2 k)
+{
+	float2 h0k = H0k[xy].xy;
+	float2 h0k_conj = H0k[xy].zw;
+
+	float omegat = sqrt(G * length(k)) * Time;
+
+	float c = cos(omegat);
+	float s = sin(omegat);
+
+	return complexMultiply(h0k, float2(c, s)) + 
+		   complexMultiply(h0k_conj, float2(c, -s));
+}
+
+float4 computeDisplaceSpectrum(float2 xy,float2 k,float2 hTilde)
+{
+	k /= max(0.001f, length(k));
+
+	return float4(complexMultiply(float2(0, -k.x), hTilde),
+				  complexMultiply(float2(0, -k.y), hTilde));
+}
